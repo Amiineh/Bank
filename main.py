@@ -1,59 +1,40 @@
-from flask import Flask, render_template, Response, flash, send_file
 from camera import VideoCamera
 from op import OP
 import cv2
-from livereload import Server
+import tkinter
+import time
+from tkinter import messagebox
 
+# This code is to hide the main tkinter window
+root = tkinter.Tk()
+root.withdraw()
 
-app = Flask(__name__)
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 myop = OP()
+stream = cv2.VideoCapture(0)
+t0_warning = 0
+warning_wait_time = 3
+t0_detect = 0
+detect_wait_time = 1
+first = False
 
-warn_path = "templates/warning.jpg"
-clear_path = "templates/ok.jpg"
+def start_timer():
+    global t0_detect
+    t0_detect = time.time()
 
-@app.route('/')
-def index():
-    return render_template('index.html', phone=False)
+while True:
+    ret, img = stream.read()
+    cv_output_data, pose_candidates, phone_detected = myop.estimate(img)
+    cv2.imshow("ATM", cv_output_data)
 
+    if phone_detected:
+        if not first:
+            first = True
+            t0_detect = time.time()
+        elif time.time() - t0_detect > detect_wait_time:
+            first = False
+            # if time.time() - t0_warning > warning_wait_time:
+            messagebox.showwarning("Warning", "Mind the phone scammers!")
+            t0_warning = time.time()
 
-def gen(camera):
-    while True:
-        # with app.app_context():
-        #     if True:
-        #         render_template('index.html', phone=True)
-        #     else:
-        #         render_template('index.html', phone=False)
-        frame = camera.get_frame(myop)
-        yield (b'--frame\r\n'
-               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n\r\n')
-
-#
-# @app.route('/video_feed')
-# def video_feed():
-#     return Response(gen(VideoCamera()),
-#                     mimetype='multipart/x-mixed-replace; boundary=frame')
-
-
-def gen_warning():
-    while True:
-        with app.app_context():
-            yield send_file(clear_path, mimetype='image/jpg')
-        # if myop.phone_detected:
-        #     yield send_file(warn_path, mimetype='image/jpg')
-        # else:
-        #     yield send_file(clear_path, mimetype='image/jpg')
-
-
-@app.route('/warning_feed')
-def warning_feed():
-    return Response(gen_warning(), mimetype='image/jpg')
-    # return send_file(clear_path, mimetype='image/jpg')
-    # print("hoora")
-#     return "hello"
-
-
-if __name__ == '__main__':
-    # server = Server(app.wsgi_app)
-    # server.serve()
-    app.run()
+    if cv2.waitKey(1) & 0xFF == ord('q'):
+        break
