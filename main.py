@@ -1,4 +1,3 @@
-from camera import VideoCamera
 from op import OP
 import cv2
 import tkinter
