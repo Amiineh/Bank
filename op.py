@@ -67,8 +67,8 @@ class OP():
             params["model_folder"] = op_dir + "/models/"
             params["model_pose"] = "COCO"
             params["camera"] = 0
-            params["part_candidates"] = 1
-            params["number_people_max"] = 1
+            # params["part_candidates"] = 1
+            # params["number_people_max"] = 2
             # params["process_real_time"] = 1
 
             # Add others in path?
@@ -96,6 +96,12 @@ class OP():
 
             self.datum = op.Datum()
 
+            # poseModel = op.PoseModel.COCO_18
+            # print(op.getPoseBodyPartMapping(poseModel))
+            # print(op.getPoseNumberBodyParts(poseModel))
+            # print(op.getPosePartPairs(poseModel))
+            # print(op.getPoseMapIndex(poseModel))
+
         except Exception as e:
             print(e)
             sys.exit(-1)
@@ -103,58 +109,68 @@ class OP():
     def estimate(self, img):
         self.datum.cvInputData = img
         self.opWrapper.emplaceAndPop([self.datum])
-        self.detect_phone()
+        self.num_people = self.count_people()
+        print(self.num_people)
+        for i in range(self.num_people):
+            self.detect_phone(i)
 
-        return self.datum.cvOutputData, self.datum.poseCandidates, self.phone_detected
+        return self.datum.cvOutputData, self.phone_detected, self.num_people
 
+    def count_people(self):
+        try:
+            return len(self.datum.poseKeypoints)
+        except:
+            return 0
 
-    def detect_phone(self):
-        if not self.eyes_visibe():
+    def detect_phone(self, idx=0):
+        if not self.eyes_visibe(idx):
             self.phone_detected = False
-        elif self.hand_near_ear():
-            print("def phone ", time.time())
+        elif self.hand_near_eye(idx):
+            # print("def phone ", time.time(), idx)
             self.phone_detected = True
         else:
             self.phone_detected = False
 
-    def eyes_visibe(self):
+    def eyes_visibe(self, percision=0.5, idx=0):
         def get_keypoint(l):
-            points = self.datum.poseCandidates
+            points = self.datum.poseKeypoints[idx]
             return points[self.label[l]]
 
         l_eye = get_keypoint('l_eye')
         r_eye = get_keypoint('r_eye')
-        if len(l_eye) == 0 or len(r_eye) == 0:
+        if l_eye[2] < percision or r_eye[2] < percision:
+            # print(l_eye, r_eye)
             return False
         return True
 
-    def hand_near_ear(self, percision=0.1):
+    def hand_near_eye(self, percision=0.4, idx=0):
 
         def get_keypoint(l):
-            points = self.datum.poseCandidates
+            points = self.datum.poseKeypoints[idx]
             return points[self.label[l]]
 
         def distance(point_a, point_b):
-            if len(point_a) == 0 or len(point_b) == 0:
-                return -1
-
-            xa, ya, pa = point_a[0]     # todo: clean unpack
-            xb, yb, pb = point_b[0]
+            xa, ya, pa = point_a
+            xb, yb, pb = point_b
             if pa * pb < percision:
                 return -2
             return math.sqrt((xa-xb)**2 + (ya-yb)**2)
 
         # if dist(hand, ear) < dist(ear, ear) -> phone
-        l_hand_ear_dist = distance(get_keypoint('l_hand'), get_keypoint('l_ear'))
-        r_hand_ear_dist = distance(get_keypoint('r_hand'), get_keypoint('r_ear'))
-        ear_ear_dist = distance(get_keypoint('l_ear'), get_keypoint('r_ear'))
+        l_hand_eye_dist = distance(get_keypoint('l_hand'), get_keypoint('l_eye'))
+        r_hand_eye_dist = distance(get_keypoint('r_hand'), get_keypoint('r_eye'))
+        eye_eye_dist = 2. * distance(get_keypoint('l_eye'), get_keypoint('r_eye'))
 
-        if ear_ear_dist > 0:
-            if (l_hand_ear_dist > 0 and l_hand_ear_dist < ear_ear_dist) or \
-                    (r_hand_ear_dist > 0 and r_hand_ear_dist < ear_ear_dist):
-                print('l_hand_ear_dist: ', l_hand_ear_dist)
-                print('r_hand_ear_dist:', r_hand_ear_dist)
-                print('ear_ear_dist:', ear_ear_dist)
+        if eye_eye_dist > 0.0:
+            if (l_hand_eye_dist > 0 and l_hand_eye_dist < eye_eye_dist) or \
+                    (r_hand_eye_dist > 0 and r_hand_eye_dist < eye_eye_dist):
+                # print('l_hand_eye_dist: ', l_hand_eye_dist)
+                # print('r_hand_eye_dist:', r_hand_eye_dist)
+                # print('eye_eye_dist:', eye_eye_dist)
+                # print('l_hand: ', get_keypoint('l_hand'),
+                #       'r_hand: ', get_keypoint('r_hand'),
+                #       'l_ear: ', get_keypoint('l_ear'),
+                #       'r_ear: ', get_keypoint('r_ear'))
                 return True
 
         return False
